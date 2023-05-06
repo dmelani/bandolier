@@ -6,14 +6,13 @@ from fastapi import FastAPI, HTTPException
 from dataclasses import dataclass, asdict
 import json
 from os import path, rename
+import glob
 
 MODEL_DIR = "models"
 
 app = FastAPI()
 
 pending = []
-db = {}
-storage = {}
 
 @dataclass
 class Model:
@@ -27,9 +26,7 @@ class Model:
     filename: str
     download_url: str
 
-async def store(model, data):
-    db[model.alias] = model
-
+async def store_model(model, data):
     async with aiofiles.open(path.join(MODEL_DIR, f"{model.filename}.modelcard"), "w") as f:
         await f.write(json.dumps(asdict(model)))
 
@@ -57,10 +54,12 @@ async def download_model(model):
 
 @app.get("/list")
 async def list():
-    return [m.name for m in db.values()]
+    db = load_models()
+    return [m.alias for m in db.values()]
 
 @app.get("/model/{alias}")
 async def get_model(alias):
+    db = load_models()
     if alias not in db:
         raise HTTPException(status_code=404, detail="No such model")
     
@@ -74,6 +73,7 @@ async def get_model(alias):
 @app.get("/download/civitai/{model_hash}/{alias}")
 async def download_civitai(model_hash, alias):
     # TODO - check if hash already in db
+    db = load_models()
 
     if alias in pending:
         return {alias: "pending"}
@@ -120,13 +120,26 @@ async def download_civitai(model_hash, alias):
 
     data = await download_model(model)
 
-    await store(model, data)
+    await store_model(model, data)
     pending.remove(alias)
 
     return {alias: "present", "model_info": model} 
 
+def load_models():
+    db = {}
+    model_card_files = glob.glob(f"{MODEL_DIR}/*.modelcard")
+    for mcf in model_card_files:
+        with open(mcf, "r") as f:
+            mcf_data = f.read()
+            model = json.loads(mcf_data)
+            model = Model(model["alias"], model["name"], model["service"], model["model_hash"], model["model_id"], model["version_id"], model["file_id"], model["filename"], model["download_url"])
+            db[model.alias] = model
+
+    return db
+
 async def main():
-    config = uvicorn.Config("bandolier:app", port=5000, log_level="info")
+    load_models()
+    config = uvicorn.Config("bandolier:app", host="192.168.1.43", port=5000, log_level="info")
     server = uvicorn.Server(config)
     await server.serve()
 
