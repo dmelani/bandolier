@@ -3,6 +3,7 @@ import uvicorn
 import aiohttp
 import aiofiles
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from dataclasses import dataclass, asdict
 import json
 from os import path, rename
@@ -85,13 +86,15 @@ async def get_model(alias):
     db = load_models()
     if alias not in db:
         raise HTTPException(status_code=404, detail="No such model")
-    
-    async def iterfile():
-        async with aiofiles.open(path.join(MODEL_DIR, db[alias].filename), "rb") as f:
-            async for chunk in f.aiter_bytes():
-                yield chunk
 
-    return StreamingResponse(iterfile(), media_type="application/octet-stream")
+    return FileResponse(f"MODEL_DIR/{db[alias].filename}")
+    
+#    async def iterfile():
+#        async with aiofiles.open(path.join(MODEL_DIR, db[alias].filename), "rb") as f:
+#            async for chunk in f.aiter_bytes():
+#                yield chunk
+#
+#    return StreamingResponse(iterfile(), media_type="application/octet-stream")
 
 @app.get("/download/civitai/{model_hash}/{alias}")
 async def download_civitai(model_hash, alias):
