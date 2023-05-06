@@ -87,7 +87,7 @@ async def get_model(alias):
     if alias not in db:
         raise HTTPException(status_code=404, detail="No such model")
 
-    return FileResponse(f"MODEL_DIR/{db[alias].filename}")
+    return FileResponse(path.join(MODEL_DIR, db[alias].filename))
     
 #    async def iterfile():
 #        async with aiofiles.open(path.join(MODEL_DIR, db[alias].filename), "rb") as f:
