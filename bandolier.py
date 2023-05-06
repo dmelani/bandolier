@@ -7,12 +7,30 @@ from dataclasses import dataclass, asdict
 import json
 from os import path, rename
 import glob
+from multiprocessing import shared_memory, Lock
+from contextlib import asynccontextmanager
 
 MODEL_DIR = "models"
 
-app = FastAPI()
+pending = shared_memory.ShareableList([None] * 100)
+pending_lock = Lock()
 
-pending = []
+def release_shared_memory():
+    global pending
+    pending.shm.close()
+    pending.shm.unlink()
+    del pending
+
+@asynccontextmanager
+async def lifespan(app):
+    #stuff before start
+
+    yield
+
+    # Stuff when closing app
+    release_shared_memory()
+
+app = FastAPI(lifespan=lifespan)
 
 @dataclass
 class Model:
@@ -57,6 +75,11 @@ async def list():
     db = load_models()
     return [m.alias for m in db.values()]
 
+@app.get("/pending")
+async def list():
+    with pending_lock:
+        return {"pending": [p for p in pending if p is not None]}
+
 @app.get("/model/{alias}")
 async def get_model(alias):
     db = load_models()
@@ -75,13 +98,19 @@ async def download_civitai(model_hash, alias):
     # TODO - check if hash already in db
     db = load_models()
 
-    if alias in pending:
-        return {alias: "pending"}
-
     if alias in db:
         return {alias: "present", "model_info": db[alias]}
 
-    pending.append(alias)
+    with pending_lock:
+        if alias in pending:
+            return {alias: "pending"}
+
+        idx = pending.index(None)
+        if idx == None:
+            raise HTTPException(status_code=500, detail="Too many pending downloads")
+
+        pending[idx] = alias
+
     resp = await fetch_model_card(f"https://civitai.com/api/v1/model-versions/by-hash/{model_hash}")
     model_card = json.loads(resp)
 
@@ -121,7 +150,9 @@ async def download_civitai(model_hash, alias):
     data = await download_model(model)
 
     await store_model(model, data)
-    pending.remove(alias)
+    with pending_lock:
+        idx = pending.index(alias)
+        pending[idx] = None
 
     return {alias: "present", "model_info": model} 
 
@@ -137,11 +168,13 @@ def load_models():
 
     return db
 
+
 async def main():
     load_models()
     config = uvicorn.Config("bandolier:app", host="192.168.1.43", port=5000, log_level="info")
     server = uvicorn.Server(config)
     await server.serve()
+    release_shared_memory()
 
 if __name__=="__main__":
     asyncio.run(main())
