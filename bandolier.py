@@ -10,6 +10,7 @@ from os import path, rename
 import glob
 from multiprocessing import shared_memory, Lock
 from contextlib import asynccontextmanager
+from pydantic import BaseModel
 
 
 # Need to split this up for now to calculate model names. A better solution would be to refresh automatic1111 and find the model name from the path using the api.
@@ -112,8 +113,15 @@ async def get_model(alias):
 #
 #    return StreamingResponse(iterfile(), media_type="application/octet-stream")
 
-@app.get("/download/civitai/{model_hash}/{alias}")
-async def download_civitai(model_hash, alias):
+class DownloadModelItem(BaseModel):
+    hash: str
+    alias: str
+
+@app.post("/download/civitai/")
+async def download_civitai(dm: DownloadModelItem):
+    alias = dm.alias
+    model_hash  = dm.hash
+
     # TODO - check if hash already in db
     db = load_models()
 
