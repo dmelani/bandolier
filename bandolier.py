@@ -147,7 +147,7 @@ async def download_civitai(dm: DownloadModelItem):
             pending[idx] = None
         raise HTTPException(status_code=422, detail="Model was of wrong type")
 
-    if model_card["baseModel"] not in ["SD 1.5", "Other", "SD 1.4"]:
+    if model_card["baseModel"] not in ["SD 1.5", "Other", "SD 1.4", "SDXL 1.0", "SDXL 0.9"]:
         with pending_lock:
             idx = pending.index(alias)
             pending[idx] = None
@@ -218,7 +218,7 @@ def load_models():
 
 async def main():
     load_models()
-    config = uvicorn.Config("bandolier:app", host="192.168.1.43", port=5000, log_level="info")
+    config = uvicorn.Config("bandolier:app", host="192.168.1.142", port=5000, log_level="info")
     server = uvicorn.Server(config)
     await server.serve()
     release_shared_memory()
